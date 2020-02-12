@@ -25,10 +25,10 @@ static int _identifyResultAndAggregateOps(OpBase *root, OpResult **opResult,
 
 	// Expecting a single aggregation, without ordering.
 	*opAggregate = (OpAggregate *)op;
-	uint exp_count = array_len((*opAggregate)->exps);
+	uint exp_count = array_len((*opAggregate)->projection_exps);
 	if(exp_count != 1) return 0;
 
-	AR_ExpNode *exp = (*opAggregate)->exps[0];
+	AR_ExpNode *exp = (*opAggregate)->projection_exps[0];
 
 	// Make sure aggregation performs counting.
 	if(exp->type != AR_EXP_OP ||
@@ -106,11 +106,11 @@ bool _reduceNodeCount(ExecutionPlan *plan) {
 	 * projection operation. */
 	AR_ExpNode *exp = AR_EXP_NewConstOperandNode(nodeCount);
 	// The new expression must be aliased to populate the Record.
-	exp->resolved_name = opAggregate->exps[0]->resolved_name;
+	exp->resolved_name = opAggregate->projection_exps[0]->resolved_name;
 	AR_ExpNode **exps = array_new(AR_ExpNode *, 1);
 	exps = array_append(exps, exp);
 
-	OpBase *opProject = NewProjectOp(opAggregate->op.plan, exps);
+	OpBase *opProject = NewProjectOp(opAggregate->op.plan, exps, NULL);
 
 	// New execution plan: "Project -> Results"
 	ExecutionPlan_RemoveOp(plan, (OpBase *)opScan);
@@ -240,11 +240,11 @@ void _reduceEdgeCount(ExecutionPlan *plan) {
 	 * projection operation. */
 	AR_ExpNode *exp = AR_EXP_NewConstOperandNode(edgeCount);
 	// The new expression must be aliased to populate the Record.
-	exp->resolved_name = opAggregate->exps[0]->resolved_name;
+	exp->resolved_name = opAggregate->projection_exps[0]->resolved_name;
 	AR_ExpNode **exps = array_new(AR_ExpNode *, 1);
 	exps = array_append(exps, exp);
 
-	OpBase *opProject = NewProjectOp(opAggregate->op.plan, exps);
+	OpBase *opProject = NewProjectOp(opAggregate->op.plan, exps, NULL);
 
 	// New execution plan: "Project -> Results"
 	ExecutionPlan_RemoveOp(plan, (OpBase *)opScan);
@@ -267,3 +267,4 @@ void reduceCount(ExecutionPlan *plan) {
 	 * then edge count will be tried to be executed upon the same execution plan */
 	if(!_reduceNodeCount(plan)) _reduceEdgeCount(plan);
 }
+
