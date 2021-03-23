@@ -33,7 +33,6 @@ static void _ExecutionPlan_ProcessQueryGraph(ExecutionPlan *plan, QueryGraph *qg
 		uint edge_count = array_len(cc->edges);
 		OpBase *root = NULL; // The root of the traversal chain will be added to the ExecutionPlan.
 		OpBase *tail = NULL;
-
 		if(edge_count == 0) {
 			/* If there are no edges in the component, we only need a node scan. */
 			QGNode *n = cc->nodes[0];
@@ -69,16 +68,19 @@ static void _ExecutionPlan_ProcessQueryGraph(ExecutionPlan *plan, QueryGraph *qg
 			/* For each expression, build the appropriate traversal operation. */
 			for(int j = 0; j < expCount; j++) {
 				AlgebraicExpression *exp = exps[j];
+
 				// Empty expression, already freed.
 				if(AlgebraicExpression_OperandCount(exp) == 0) continue;
 
 				QGEdge *edge = NULL;
 				if(AlgebraicExpression_Edge(exp)) edge = QueryGraph_GetEdgeByAlias(qg,
 																					   AlgebraicExpression_Edge(exp));
-				if(edge && QGEdge_VariableLength(edge)) {
+				if (edge && edge->type == QG_PATH_PATTERN) {
+					root = NewCondTraverseOp(plan, gc->g, exp, true);
+				} else if (edge && QGEdge_VariableLength(edge)) {
 					root = NewCondVarLenTraverseOp(plan, gc->g, exp);
 				} else {
-					root = NewCondTraverseOp(plan, gc->g, exp);
+					root = NewCondTraverseOp(plan, gc->g, exp, false);
 				}
 				// Insert the new traversal op at the root of the chain.
 				ExecutionPlan_AddOp(root, tail);

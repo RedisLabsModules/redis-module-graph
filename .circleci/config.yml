@@ -41,9 +41,9 @@ commands:
           - GraphBLAS4.0-{{checksum "./deps/GraphBLAS/README.md"}}
 
       # Load libcypher-parser from cache if possible.
-      - restore_cache:
-          keys:
-          - libcypher-parser-{{checksum "./deps/libcypher-parser/README.md"}}
+#       - restore_cache:
+#           keys:
+#           - libcypher-parser-{{checksum "./deps/libcypher-parser/README.md"}}
   
   save-deps-cache:
     steps:
@@ -54,10 +54,10 @@ commands:
           key: GraphBLAS4.0-{{checksum "./deps/GraphBLAS/README.md"}}
 
       # Save libcypher-parser to cache.
-      - save_cache:
-          paths:
-            - deps/libcypher-parser
-          key: libcypher-parser-{{checksum "./deps/libcypher-parser/README.md"}}
+#       - save_cache:
+#           paths:
+#             - deps/libcypher-parser
+#           key: libcypher-parser-{{checksum "./deps/libcypher-parser/README.md"}}
 
   setup-prerequisits:
     steps:
@@ -168,17 +168,17 @@ jobs:
           name: Test
           command: make test
 
-      - run:
-          name: Persist Artifact for CI benchmarks
-          command: |
-            strip src/$MODULE_ARTIFACT
-            mkdir -p /workspace
-            cp src/$MODULE_ARTIFACT /workspace
-
-      - persist_to_workspace:
-          root: /workspace
-          paths:
-            - '*.so'
+#      - run:
+#          name: Persist Artifact for CI benchmarks
+#          command: |
+#            strip src/$MODULE_ARTIFACT
+#            mkdir -p /workspace
+#            cp src/$MODULE_ARTIFACT /workspace
+#
+#      - persist_to_workspace:
+#          root: /workspace
+#          paths:
+#            - '*.so'
 
   build_memcheck:
     docker:
@@ -318,6 +318,7 @@ jobs:
       - early_return_for_forked_pull_requests
       - checkout
       - setup-prerequisits
+      - setup-automation
       - attach_workspace:
           at: /workspace
       - load-cached-deps
@@ -392,47 +393,41 @@ workflows:
   build_and_package:
     jobs:
       - build:
-          <<: *not-on-integ-branch
+          <<: *on-any-branch
       - build_memcheck:
           <<: *on-any-branch
-      - build_macos:
-          # <<: *on-any-branch
-          <<: *on-integ-and-version-tags
-      - platform_build:
-          <<: *on-integ-and-version-tags
-          matrix:
-            parameters:
-              platform: [bionic, xenial, centos7]
-      - deploy_branch:
-          <<: *on-integ-branch
-          requires:
-            - platform_build
-            - build_macos
-      - release_automation:
-          <<: *on-version-tags
-          requires:
-            - deploy_release
-      - deploy_release:
-          <<: *on-version-tags
-          requires:
-            - platform_build
-            - build_macos
-      - performance_ci_automation_not_integ:
-          <<: *not-on-integ-branch
           requires:
             - build
-      - performance_ci_automation:
-          <<: *on-integ-and-version-tags
-          requires:
-            - platform_build
+#      - package_branch:
+#          <<: *on-master
+#          requires:
+#            - build_test
+#            - build_memcheck
+#      - package_release:
+#          <<: *on-version-tags
+#          requires:
+#            - build_test
+#            - build_memcheck
+#      - deploy_branch:
+#          requires:
+#            - package_branch
+#      - release_automation:
+#          requires:
+#            - deploy_branch
+#      - deploy_release:
+#          <<: *on-version-tags
+#          requires:
+#            - package_release
+#      - performance_ci_automation:
+#          <<: *on-any-branch
+#          requires:
+#            - build_test
 
-  nightly:
-    triggers:
-      - schedule:
-          cron: "07 20 * * *"
-          filters:
-            branches:
-              only: master
-    jobs:
-      - nightly_automation
-      - nightly_performance_automation
+#  nightly:
+#    triggers:
+#      - schedule:
+#          cron: "07 20 * * *"
+#          <<: *on-master
+#    jobs:
+#      - nightly_automation
+#      - nightly_performance_automation
