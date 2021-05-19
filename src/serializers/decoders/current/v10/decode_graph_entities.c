@@ -4,9 +4,10 @@
 * This file is available under the Redis Labs Source Available License Agreement
 */
 
-#include "decode_v7.h"
+#include "decode_v10.h"
 
 // Forward declarations.
+static SIValue _RdbLoadPoint(RedisModuleIO *rdb);
 static SIValue _RdbLoadSIArray(RedisModuleIO *rdb);
 
 static SIValue _RdbLoadSIValue(RedisModuleIO *rdb) {
@@ -27,10 +28,18 @@ static SIValue _RdbLoadSIValue(RedisModuleIO *rdb) {
 		return SI_BoolVal(RedisModule_LoadSigned(rdb));
 	case T_ARRAY:
 		return _RdbLoadSIArray(rdb);
+	case T_POINT:
+		return _RdbLoadPoint(rdb);
 	case T_NULL:
 	default: // currently impossible
 		return SI_NullVal();
 	}
+}
+
+static SIValue _RdbLoadPoint(RedisModuleIO *rdb) {
+	double lat = RedisModule_LoadDouble(rdb);
+	double lon = RedisModule_LoadDouble(rdb);
+	return SI_Point(lat, lon);
 }
 
 static SIValue _RdbLoadSIArray(RedisModuleIO *rdb) {
@@ -66,7 +75,7 @@ static void _RdbLoadEntity(RedisModuleIO *rdb, GraphContext *gc, GraphEntity *e)
 }
 
 
-void RdbLoadNodes_v7(RedisModuleIO *rdb, GraphContext *gc, uint64_t node_count) {
+void RdbLoadNodes_v10(RedisModuleIO *rdb, GraphContext *gc, uint64_t node_count) {
 	/* Node Format:
 	 *      ID
 	 *      #labels M
@@ -79,20 +88,19 @@ void RdbLoadNodes_v7(RedisModuleIO *rdb, GraphContext *gc, uint64_t node_count) 
 		Node n;
 		NodeID id = RedisModule_LoadUnsigned(rdb);
 
-		// Extend this logic when multi-label support is added.
 		// #labels M
 		uint64_t nodeLabelCount = RedisModule_LoadUnsigned(rdb);
 
 		// * (labels) x M
-		// M will currently always be 0 or 1
-		uint64_t l = (nodeLabelCount) ? RedisModule_LoadUnsigned(rdb) : GRAPH_NO_LABEL;
-		Serializer_Graph_SetNode(gc->g, id, &l, nodeLabelCount, &n);
+		uint64_t labels[nodeLabelCount];
+		for(uint64_t i = 0; i < nodeLabelCount; i ++) labels[i] = RedisModule_LoadUnsigned(rdb);
+		Serializer_Graph_SetNode(gc->g, id, labels, nodeLabelCount, &n);
 
 		_RdbLoadEntity(rdb, gc, (GraphEntity *)&n);
 	}
 }
 
-void RdbLoadDeletedNodes_v7(RedisModuleIO *rdb, GraphContext *gc, uint64_t deleted_node_count) {
+void RdbLoadDeletedNodes_v10(RedisModuleIO *rdb, GraphContext *gc, uint64_t deleted_node_count) {
 	/* Format:
 	* node id X N */
 	for(uint64_t i = 0; i < deleted_node_count; i++) {
@@ -101,7 +109,7 @@ void RdbLoadDeletedNodes_v7(RedisModuleIO *rdb, GraphContext *gc, uint64_t delet
 	}
 }
 
-void RdbLoadEdges_v7(RedisModuleIO *rdb, GraphContext *gc, uint64_t edge_count) {
+void RdbLoadEdges_v10(RedisModuleIO *rdb, GraphContext *gc, uint64_t edge_count) {
 	/* Format:
 	 * {
 	 *  edge ID
@@ -123,7 +131,7 @@ void RdbLoadEdges_v7(RedisModuleIO *rdb, GraphContext *gc, uint64_t edge_count) 
 	}
 }
 
-void RdbLoadDeletedEdges_v7(RedisModuleIO *rdb, GraphContext *gc, uint64_t deleted_edge_count) {
+void RdbLoadDeletedEdges_v10(RedisModuleIO *rdb, GraphContext *gc, uint64_t deleted_edge_count) {
 	/* Format:
 	 * edge id X N */
 	for(uint64_t i = 0; i < deleted_edge_count; i++) {

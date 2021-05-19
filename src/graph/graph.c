@@ -17,11 +17,14 @@ static GrB_BinaryOp _graph_edge_accum = NULL;
 // GraphBLAS binary operator for freeing edges
 static GrB_BinaryOp _binary_op_delete_edges = NULL;
 
-/* ========================= Forward declarations  ========================= */
+// forward declarations
 void _MatrixResizeToCapacity(const Graph *g, RG_Matrix m);
 
 
-/* ========================= GraphBLAS functions ========================= */
+//------------------------------------------------------------------------------
+// GraphBLAS functions
+//------------------------------------------------------------------------------
+
 void _edge_accum(void *_z, const void *_x, const void *_y) {
 	EdgeID *z = (EdgeID *)_z;
 	const EdgeID *x = (const EdgeID *)_x;
@@ -60,9 +63,11 @@ void _binary_op_free_edge(void *z, const void *x, const void *y) {
 	}
 }
 
-/* ========================= RG_Matrix functions =============================== */
+//------------------------------------------------------------------------------
+// RG_Matrix functions
+//------------------------------------------------------------------------------
 
-// Creates a new matrix
+// creates a new matrix
 static RG_Matrix RG_Matrix_New(GrB_Type data_type, GrB_Index nrows, GrB_Index ncols) {
 	RG_Matrix matrix = rm_calloc(1, sizeof(_RG_Matrix));
 
@@ -77,17 +82,17 @@ static RG_Matrix RG_Matrix_New(GrB_Type data_type, GrB_Index nrows, GrB_Index nc
 	return matrix;
 }
 
-// Returns underlying GraphBLAS matrix.
+// returns underlying GraphBLAS matrix
 static inline GrB_Matrix RG_Matrix_Get_GrB_Matrix(RG_Matrix matrix) {
 	return matrix->grb_matrix;
 }
 
-// Locks the matrix.
-static inline void RG_Matrix_Lock(RG_Matrix matrix) {
+// locks the matrix
+static inline void _RG_Matrix_Lock(RG_Matrix matrix) {
 	pthread_mutex_lock(&matrix->mutex);
 }
 
-// Unlocks the matrix.
+// unlocks the matrix
 static inline void _RG_Matrix_Unlock(RG_Matrix matrix) {
 	pthread_mutex_unlock(&matrix->mutex);
 }
@@ -96,27 +101,29 @@ static inline bool _RG_Matrix_MultiEdgeEnabled(RG_Matrix matrix) {
 	return matrix->allow_multi_edge;
 }
 
-// Free RG_Matrix.
+// free RG_Matrix
 static void RG_Matrix_Free(RG_Matrix matrix) {
 	GrB_Matrix_free(&matrix->grb_matrix);
 	pthread_mutex_destroy(&matrix->mutex);
 	rm_free(matrix);
 }
 
-/* ========================= Synchronization functions ========================= */
+//------------------------------------------------------------------------------
+// Synchronization functions
+//------------------------------------------------------------------------------
 
-/* Acquire a lock that does not restrict access from additional reader threads */
+// acquire a lock that does not restrict access from additional reader threads
 void Graph_AcquireReadLock(Graph *g) {
 	pthread_rwlock_rdlock(&g->_rwlock);
 }
 
-/* Acquire a lock for exclusive access to this graph's data */
+// acquire a lock for exclusive access to this graph's data
 void Graph_AcquireWriteLock(Graph *g) {
 	pthread_rwlock_wrlock(&g->_rwlock);
 	g->_writelocked = true;
 }
 
-/* Release the held lock */
+// release the held lock
 void Graph_ReleaseLock(Graph *g) {
 	/* Set _writelocked to false BEFORE unlocking
 	 * if this is a reader thread no harm done,
@@ -129,35 +136,37 @@ void Graph_ReleaseLock(Graph *g) {
 	pthread_rwlock_unlock(&g->_rwlock);
 }
 
-/* Writer request access to graph. */
+// writer request access to graph.
 void Graph_WriterEnter(Graph *g) {
 	pthread_mutex_lock(&g->_writers_mutex);
 }
 
-/* Writer release access to graph. */
+// writer release access to graph
 void Graph_WriterLeave(Graph *g) {
 	pthread_mutex_unlock(&g->_writers_mutex);
 }
 
-/* Force execution of all pending operations on a matrix. */
+// force execution of all pending operations on a matrix
 static inline void _Graph_ApplyPending(GrB_Matrix m) {
 	GrB_Info res = GrB_wait(&m);
 	ASSERT(res == GrB_SUCCESS);
 }
 
-/* ========================= Graph utility functions ========================= */
+//------------------------------------------------------------------------------
+// Graph utility functions
+//------------------------------------------------------------------------------
 
-// Return number of nodes graph can contain.
+// return number of nodes graph can contain
 size_t _Graph_NodeCap(const Graph *g) {
 	return g->nodes->itemCap;
 }
 
-// Return number of nodes graph can contain.
+// return number of nodes graph can contain
 size_t _Graph_EdgeCap(const Graph *g) {
 	return g->edges->itemCap;
 }
 
-// Locates edges connecting src to destination.
+// locates edges connecting src to destination
 void _Graph_GetEdgesConnectingNodes(const Graph *g, NodeID src, NodeID dest, int r, Edge **edges) {
 	ASSERT(g && src < Graph_RequiredMatrixDim(g) && dest < Graph_RequiredMatrixDim(g) &&
 		   r < Graph_RelationTypeCount(g));
@@ -198,7 +207,7 @@ void _Graph_GetEdgesConnectingNodes(const Graph *g, NodeID src, NodeID dest, int
 	}
 }
 
-// Tests if there's an edge of type r between src and dest nodes.
+// tests if there's an edge of type r between src and dest nodes
 bool Graph_EdgeExists(const Graph *g, NodeID srcID, NodeID destID, int r) {
 	ASSERT(g);
 	EdgeID edgeId;
@@ -211,11 +220,13 @@ static inline Entity *_Graph_GetEntity(const DataBlock *entities, EntityID id) {
 	return DataBlock_GetItem(entities, id);
 }
 
-/* ============= Matrix synchronization and resizing functions =============== */
+//------------------------------------------------------------------------------
+// Matrix synchronization and resizing functions
+//------------------------------------------------------------------------------
 
 /* Resize given matrix, such that its number of row and columns
- * matches the number of nodes in the graph. Also, synchronize
- * matrix to execute any pending operations. */
+ * matches the number of nodes in the graph.
+ * Also, synchronize matrix to execute any pending operations. */
 void _MatrixSynchronize(const Graph *g, RG_Matrix rg_matrix) {
 	GrB_Matrix m = RG_Matrix_Get_GrB_Matrix(rg_matrix);
 	GrB_Index n_rows;
@@ -224,27 +235,27 @@ void _MatrixSynchronize(const Graph *g, RG_Matrix rg_matrix) {
 	GrB_Matrix_ncols(&n_cols, m);
 	GrB_Index dims = Graph_RequiredMatrixDim(g);
 
-	// If the graph belongs to one thread, we don't need to lock the mutex.
+	// if the graph belongs to one thread, we don't need to lock the mutex
 	if(g->_writelocked) {
 		if((n_rows != dims) || (n_cols != dims)) {
 			GrB_Info res = GxB_Matrix_resize(m, dims, dims);
 			ASSERT(res == GrB_SUCCESS);
 		}
 
-		// Writer under write lock, no need to flush pending changes.
+		// writer under write lock, no need to flush pending changes
 		return;
 	}
 
-	// Lock the matrix.
-	RG_Matrix_Lock(rg_matrix);
+	// lock the matrix
+	_RG_Matrix_Lock(rg_matrix);
 
 	bool pending = false;
 	GxB_Matrix_Pending(m, &pending);
 
-	// If the matrix has pending operations or requires
-	// a resize, enter critical section.
+	// if the matrix has pending operations or requires
+	// a resize, enter critical section
 	if(pending || (n_rows != dims) || (n_cols != dims)) {
-		// Double-check if resize is necessary.
+		// double-check if resize is necessary
 		GrB_Matrix_nrows(&n_rows, m);
 		GrB_Matrix_ncols(&n_cols, m);
 		dims = Graph_RequiredMatrixDim(g);
@@ -252,14 +263,14 @@ void _MatrixSynchronize(const Graph *g, RG_Matrix rg_matrix) {
 			GrB_Info res = GxB_Matrix_resize(m, dims, dims);
 			ASSERT(res == GrB_SUCCESS);
 		}
-		// Flush changes to matrix.
+		// flush changes to matrix
 		_Graph_ApplyPending(m);
 	}
-	// Unlock matrix mutex.
+	// unlock matrix mutex
 	_RG_Matrix_Unlock(rg_matrix);
 }
 
-/* Resize matrix to node capacity. */
+// resize matrix to node capacity
 void _MatrixResizeToCapacity(const Graph *g, RG_Matrix matrix) {
 	GrB_Matrix m = RG_Matrix_Get_GrB_Matrix(matrix);
 	GrB_Index nrows;
@@ -268,19 +279,20 @@ void _MatrixResizeToCapacity(const Graph *g, RG_Matrix matrix) {
 	GrB_Matrix_nrows(&nrows, m);
 	GrB_Index cap = _Graph_NodeCap(g);
 
-	// This policy should only be used in a thread-safe context, so no locking is required.
+	// this policy should only be used in a thread-safe context,
+	// so no locking is required
 	if(ncols != cap || nrows != cap) {
 		GrB_Info res = GxB_Matrix_resize(m, cap, cap);
 		ASSERT(res == GrB_SUCCESS);
 	}
 }
 
-/* Do not update matrices. */
+// do not update matrices
 void _MatrixNOP(const Graph *g, RG_Matrix matrix) {
 	return;
 }
 
-/* Define the current behavior for matrix creations and retrievals on this graph. */
+// Define the current behavior for matrix creations and retrievals on this graph
 void Graph_SetMatrixPolicy(Graph *g, MATRIX_POLICY policy) {
 	switch(policy) {
 		case SYNC_AND_MINIMIZE_SPACE:
@@ -302,9 +314,12 @@ void Graph_SetMatrixPolicy(Graph *g, MATRIX_POLICY policy) {
 	}
 }
 
-/* Synchronize and resize all matrices in graph. */
+// synchronize and resize all matrices in graph
 void Graph_ApplyAllPending(Graph *g) {
 	RG_Matrix M;
+
+	g->SynchronizeMatrix(g, g->adjacency_matrix);
+	g->SynchronizeMatrix(g, g->_t_adjacency_matrix);
 
 	for(int i = 0; i < array_len(g->labels); i ++) {
 		M = g->labels[i];
@@ -336,6 +351,7 @@ Graph *Graph_New(size_t node_cap, size_t edge_cap) {
 	g->nodes = DataBlock_New(node_cap, sizeof(Entity), (fpDestructor)FreeEntity);
 	g->edges = DataBlock_New(edge_cap, sizeof(Entity), (fpDestructor)FreeEntity);
 	g->labels = array_new(RG_Matrix, GRAPH_DEFAULT_LABEL_CAP);
+	g->node_labels = RG_Matrix_New(GrB_BOOL, node_cap, GRAPH_DEFAULT_LABEL_CAP);
 	g->relations = array_new(RG_Matrix, GRAPH_DEFAULT_RELATION_TYPE_CAP);
 	g->adjacency_matrix = RG_Matrix_New(GrB_BOOL, node_cap, node_cap);
 	g->_t_adjacency_matrix = RG_Matrix_New(GrB_BOOL, node_cap, node_cap);
@@ -439,22 +455,6 @@ int Graph_GetEdge(const Graph *g, EdgeID id, Edge *e) {
 	return (e->entity != NULL);
 }
 
-int Graph_GetNodeLabel(const Graph *g, NodeID nodeID) {
-	ASSERT(g);
-	int label = GRAPH_NO_LABEL;
-	for(int i = 0; i < array_len(g->labels); i++) {
-		bool x = false;
-		GrB_Matrix M = Graph_GetLabelMatrix(g, i);
-		GrB_Info res = GrB_Matrix_extractElement_BOOL(&x, M, nodeID, nodeID);
-		if(res == GrB_SUCCESS && x == true) {
-			label = i;
-			break;
-		}
-	}
-
-	return label;
-}
-
 int Graph_GetEdgeRelation(const Graph *g, Edge *e) {
 	ASSERT(g && e);
 	NodeID srcNodeID = Edge_GetSrcNodeID(e);
@@ -519,28 +519,33 @@ void Graph_GetEdgesConnectingNodes(const Graph *g, NodeID srcID, NodeID destID, 
 	}
 }
 
-void Graph_CreateNode(Graph *g, int label, Node *n) {
-	ASSERT(g);
+static void _Graph_LabelNode(Graph *g, NodeID id, int *lbls, uint lbl_count) {
+	GrB_Matrix l = Graph_GetNodeLabelMatrix(g);
+	for(uint i = 0; i < lbl_count; i++) {
+		int label = lbls[i];
+		// set matrix at position [id, id]
+		GrB_Matrix m = Graph_GetLabelMatrix(g, label);
+		GrB_Info res = GrB_Matrix_setElement_BOOL(m, true, id, id);
+		UNUSED(res);
+		ASSERT(res == GrB_SUCCESS);
+
+		// map this label in this node's set of labels
+		res = GrB_Matrix_setElement_BOOL(l, true, id, label);
+		ASSERT(res == GrB_SUCCESS);
+	}
+}
+
+void Graph_CreateNode(Graph *g, Node *n, int *labels, uint label_count) {
+	ASSERT(g != NULL);
 
 	NodeID id;
 	Entity *en = DataBlock_AllocateItem(g->nodes, &id);
-	n->id = id;
-	n->entity = en;
-	en->prop_count = 0;
-	en->properties = NULL;
+	n->id           =  id;
+	n->entity       =  en;
+	en->prop_count  =  0;
+	en->properties  =  NULL;
 
-	if(label != GRAPH_NO_LABEL) {
-		// Try to set matrix at position [id, id]
-		// incase of a failure, scale matrix.
-		RG_Matrix matrix = g->labels[label];
-		GrB_Matrix m = RG_Matrix_Get_GrB_Matrix(matrix);
-		GrB_Info res = GrB_Matrix_setElement_BOOL(m, true, id, id);
-		if(res != GrB_SUCCESS) {
-			_MatrixResizeToCapacity(g, matrix);
-			res = GrB_Matrix_setElement_BOOL(m, true, id, id);
-			ASSERT(res == GrB_SUCCESS);
-		}
-	}
+	if(label_count > 0) _Graph_LabelNode(g, n->id, labels, label_count);
 }
 
 void Graph_FormConnection(Graph *g, NodeID src, NodeID dest, EdgeID edge_id, int r) {
@@ -697,6 +702,35 @@ void Graph_GetNodeEdges(const Graph *g, const Node *n, GRAPH_EDGE_DIR dir, int e
 	}
 }
 
+uint Graph_GetNodeLabels(const Graph *g, const Node *n, LabelID *labels, LabelID label_count) {
+	if(label_count == 0) return 0;
+	// validate inputs
+	ASSERT(g != NULL);
+	ASSERT(n != NULL);
+	ASSERT(labels != NULL);
+	GrB_Info res;
+	UNUSED(res);
+
+	// GrB_Col_extract will iterate over the range of the output size
+	GrB_Matrix M = Graph_GetNodeLabelMatrix(g);
+	GrB_Vector row;
+	GrB_Index ncols;
+	GrB_Matrix_ncols(&ncols, M);
+
+	// extract the row associated with this node's ID
+	GrB_Vector_new(&row, GrB_BOOL, label_count);
+	res = GrB_Col_extract(row, GrB_NULL, GrB_NULL, M, GrB_ALL, ncols, n->id,
+			GrB_DESC_T0);
+	ASSERT(res == GrB_SUCCESS);
+
+	// Populate array with the node's labels and update label_count to the real value.
+	res = GrB_Vector_extractTuples_BOOL(labels, GrB_NULL, &label_count, row);
+	ASSERT(res == GrB_SUCCESS);
+	GrB_free(&row);
+
+	return label_count;
+}
+
 /* Removes an edge from Graph and updates graph relevent matrices. */
 int Graph_DeleteEdge(Graph *g, Edge *e) {
 	uint64_t x;
@@ -813,7 +847,7 @@ void Graph_DeleteNode(Graph *g, Node *n) {
 	ASSERT(g && n);
 
 	// Clear label matrix at position node ID.
-	uint32_t label_count = array_len(g->labels);
+	uint32_t label_count = Graph_LabelTypeCount(g);
 	for(int i = 0; i < label_count; i++) {
 		GrB_Matrix M = Graph_GetLabelMatrix(g, i);
 		GxB_Matrix_Delete(M, ENTITY_GET_ID(n), ENTITY_GET_ID(n));
@@ -1289,6 +1323,10 @@ int Graph_AddRelationType(Graph *g) {
 	return relationID;
 }
 
+//------------------------------------------------------------------------------
+// Graph matrix retrival
+//------------------------------------------------------------------------------
+
 GrB_Matrix Graph_GetAdjacencyMatrix(const Graph *g) {
 	ASSERT(g);
 	RG_Matrix m = g->adjacency_matrix;
@@ -1337,6 +1375,52 @@ GrB_Matrix Graph_GetTransposedRelationMatrix(const Graph *g, int relation_idx) {
 	}
 }
 
+GrB_Matrix Graph_GetNodeLabelMatrix(const Graph *g) {
+	ASSERT(g != NULL);
+
+	RG_Matrix m  = g->node_labels;
+	GrB_Matrix l = RG_Matrix_Get_GrB_Matrix(m);
+
+	// make sure node-label matrix has no pendding changes and its
+	// dimenssions are node_cap X label_count
+
+	bool pending;
+	GrB_Info info;
+	GrB_Index nrows;
+	GrB_Index ncols;
+	GrB_Matrix_ncols(&ncols, l);
+	GrB_Matrix_nrows(&nrows, l);
+	GxB_Matrix_Pending(l, &pending);
+	size_t node_cap = _Graph_NodeCap(g);
+	int label_count = Graph_LabelTypeCount(g);
+
+	if(pending == true || nrows != node_cap || ncols != label_count) {
+		// if the graph belongs to one thread, we don't need to lock the mutex
+		if(!g->_writelocked) _RG_Matrix_Lock(m);
+		{
+			// locked, recheck
+			GrB_Matrix_ncols(&ncols, l);
+			GrB_Matrix_nrows(&nrows, l);
+			node_cap = _Graph_NodeCap(g);
+			label_count = Graph_LabelTypeCount(g);
+
+			if(nrows != node_cap || ncols != label_count) {
+				info = GxB_Matrix_resize(l, node_cap, label_count);
+				ASSERT(info == GrB_SUCCESS);
+			}
+
+			GxB_Matrix_Pending(l, &pending);
+			if(pending == true) {
+				info = GrB_wait(&l);
+				ASSERT(info == GrB_SUCCESS);
+			}
+		}
+		if(!g->_writelocked) _RG_Matrix_Unlock(m);
+	}
+
+	return l;
+}
+
 GrB_Matrix Graph_GetZeroMatrix(const Graph *g) {
 	GrB_Index nvals;
 	RG_Matrix z = g->_zero_matrix;
@@ -1367,6 +1451,7 @@ void Graph_Free(Graph *g) {
 		RG_Matrix_Free(g->labels[i]);
 	}
 	array_free(g->labels);
+	RG_Matrix_Free(g->node_labels);
 
 	it = Graph_ScanNodes(g);
 	while((en = (Entity *)DataBlockIterator_Next(it, NULL)) != NULL)

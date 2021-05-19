@@ -195,3 +195,24 @@ class testGraphPersistency(FlowTestsBase):
             actual_result = g.query(q)
             self.env.assertEquals(actual_result.result_set, expected_result)
 
+    # Verify that nodes with multiple labels are saved and restored correctly.
+    def test05_persist_multiple_labels(self):
+        graph_id = "multiple_labels"
+        g = Graph(graph_id, redis_con)
+        q = """CREATE (a:L0:L1:L2)"""
+        actual_result = g.query(q)
+        self.env.assertEquals(actual_result.nodes_created, 1)
+        self.env.assertEquals(actual_result.labels_added, 3)
+
+        # Verify the new node
+        q = """MATCH (a) RETURN LABELS(a)"""
+        actual_result = g.query(q)
+        expected_result = [[["L0", "L1", "L2"]]]
+        self.env.assertEquals(actual_result.result_set, expected_result)
+
+        # Save RDB & Load from RDB
+        redis_con.execute_command("DEBUG", "RELOAD")
+
+        # Verify that the graph was properly saved and loaded
+        actual_result = g.query(q)
+        self.env.assertEquals(actual_result.result_set, expected_result)
