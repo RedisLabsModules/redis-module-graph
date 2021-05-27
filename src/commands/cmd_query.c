@@ -16,6 +16,7 @@
 #include "../util/cache/cache.h"
 #include "../util/thpool/pools.h"
 #include "../execution_plan/execution_plan.h"
+#include "../undo_log/undo_log.h"
 #include "execution_ctx.h"
 
 // GraphQueryCtx stores the allocations required to execute a query.
@@ -137,6 +138,7 @@ static void _ExecuteQuery(void *args) {
 		QueryCtx_SetTLS(query_ctx);
 		CommandCtx_TrackCtx(command_ctx);
 	}
+	QueryCtx_GetUndoLog(); // Init the undo log
 
 	// instantiate the query ResultSet
 	bool compact = command_ctx->compact;
@@ -170,7 +172,10 @@ static void _ExecuteQuery(void *args) {
 		result_set = ExecutionPlan_Execute(plan);
 
 		// Emit error if query timed out.
-		if(ExecutionPlan_Drained(plan)) ErrorCtx_SetError("Query timed out");
+		if(ExecutionPlan_Drained(plan)) {
+			UndoLog_Rollback(&query_ctx->undo_log);
+			ErrorCtx_SetError("Query timed out");
+		}
 
 		ExecutionPlan_Free(plan);
 		exec_ctx->plan = NULL;
@@ -258,8 +263,7 @@ void Graph_Query(void *args) {
 
 	// set the query timeout if one was specified
 	if(command_ctx->timeout != 0) {
-		// disallow timeouts on write operations to avoid leaving the graph in an inconsistent state
-		if(readonly) Query_SetTimeOut(command_ctx->timeout, exec_ctx->plan);
+		Query_SetTimeOut(command_ctx->timeout, exec_ctx->plan);
 	}
 
 	// populate the container struct for invoking _ExecuteQuery.

@@ -9,6 +9,7 @@
 #include "../../errors.h"
 #include "../../util/arr.h"
 #include "../../query_ctx.h"
+#include "../../undo_log/undo_log.h"
 
 /* Forward declarations. */
 static Record CreateConsume(OpBase *opBase);
@@ -88,6 +89,7 @@ static void _CreateEdges(OpCreate *op, Record r) {
 
 		// create the actual edge
 		Edge newEdge = {0};
+		newEdge.relationID = INVALID_SCHEMA_ID;
 		newEdge.relationship = e->relation;
 		Edge_SetSrcNode(&newEdge, src_node);
 		Edge_SetDestNode(&newEdge, dest_node);
@@ -149,6 +151,13 @@ static Record CreateConsume(OpBase *opBase) {
 			op->records = array_append(op->records, r);
 		}
 	}
+
+	// Add created entities to undo log for the case a rollback is needed
+	// Currently we can't exit Create Op in the middle of commit proccess. 
+	// Therefore on rollback all the create ops will be already commited.
+	QueryCtx *query_ctx = QueryCtx_GetQueryCtx();
+	UndoLog_UpdateCommitted(&query_ctx->undo_log, array_len(op->pending.created_nodes) + array_len(op->pending.created_edges));
+	UndoLog_AddCreate(&query_ctx->undo_log, op->pending.created_nodes, op->pending.created_edges);
 
 	/* Done reading, we're not going to call consume any longer
 	 * there might be operations e.g. index scan that need to free
