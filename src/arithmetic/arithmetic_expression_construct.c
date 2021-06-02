@@ -12,6 +12,7 @@
 #include "../util/rmalloc.h"
 #include "../configuration/config.h"
 #include "../ast/ast_build_filter_tree.h"
+#include "../execution_plan/execution_plan_build/execution_plan_construct.h"
 
 // Forward declaration
 static AR_ExpNode *_AR_EXP_FromASTNode(const cypher_astnode_t *expr);
@@ -19,7 +20,8 @@ static AR_ExpNode *_AR_ExpNodeFromGraphEntity(const cypher_astnode_t *entity);
 
 static bool __AR_EXP_ContainsNestedAgg(const AR_ExpNode *root, bool in_agg) {
 	// Is this an aggregation node?
-	bool agg_node = (root->type == AR_EXP_OP && root->op.f->aggregate == true);
+	bool agg_node = (root->type == AR_EXP_OP && root->op.f &&
+					 root->op.f->aggregate == true);
 	// Aggregation node nested within another aggregation node.
 	if(agg_node && in_agg) return true;
 
@@ -433,18 +435,25 @@ static AR_ExpNode *_AR_ExpFromSliceExpression(const cypher_astnode_t *expr) {
 	return op;
 }
 
-static AR_ExpNode *_AR_ExpFromNamedPath(const cypher_astnode_t *path) {
+static AR_ExpNode *_AR_ExpFromPath(const cypher_astnode_t *path) {
 	uint path_len = cypher_ast_pattern_path_nelements(path);
 	/* The method TO_PATH accepts as its first parameter the ast node which represents the path.
 	 * The other parameters are the graph entities (node, edge, path) which the path builder implemented
 	 * in TO_PATH requires in order to build a complete path. The order of the evaluated graph entities
 	 * is the same order in which they apeare in the AST.*/
 	AR_ExpNode *op = AR_EXP_NewOpNode("topath", 1 + path_len);
+
 	// Set path AST as first paramerter.
 	op->op.children[0] = AR_EXP_NewConstOperandNode(SI_PtrVal((void *)path));
-	for(uint i = 0; i < path_len; i ++)
+	AST *ast = QueryCtx_GetAST();
+	for(uint i = 0; i < path_len; i ++) {
 		// Set graph entities as parameters, ordered according to the path AST.
-		op->op.children[i + 1] = _AR_EXP_FromASTNode(cypher_ast_pattern_path_get_element(path, i));
+		const cypher_astnode_t *entity = cypher_ast_pattern_path_get_element(path, i);
+		const char *alias = AST_GetEntityName(ast, entity);
+		// TODO: skip anonymous entities
+		op->op.children[i + 1] = _AR_EXP_FromASTNode(entity);
+	}
+
 	return op;
 }
 
@@ -632,6 +641,13 @@ static AR_ExpNode *_AR_ExpNodeFromComprehensionFunction(const cypher_astnode_t *
 	return op;
 }
 
+static AR_ExpNode *_AR_ExpFromPatternPath(const cypher_astnode_t *expr) {
+	// Build a placeholder operation node to contain the toPath call.
+	AR_ExpNode *op = AR_EXP_NewPlaceholderOpNode("pattern_path", 1);
+	op->op.children[0] = _AR_ExpFromPath(expr);
+	return op;
+}
+
 static AR_ExpNode *_AR_EXP_FromASTNode(const cypher_astnode_t *expr) {
 
 	const cypher_astnode_type_t t = cypher_astnode_type(expr);
@@ -648,7 +664,7 @@ static AR_ExpNode *_AR_EXP_FromASTNode(const cypher_astnode_t *expr) {
 		// entity-property pair
 	} else if(t == CYPHER_AST_PROPERTY_OPERATOR) {
 		return _AR_EXP_FromPropertyExpression(expr);
-		// sIValue constant types
+		// SIValue constant types
 	} else if(t == CYPHER_AST_INTEGER) {
 		return _AR_EXP_FromIntegerExpression(expr);
 	} else if(t == CYPHER_AST_FLOAT) {
@@ -677,7 +693,7 @@ static AR_ExpNode *_AR_EXP_FromASTNode(const cypher_astnode_t *expr) {
 	} else if(t == CYPHER_AST_SLICE_OPERATOR) {
 		return _AR_ExpFromSliceExpression(expr);
 	} else if(t == CYPHER_AST_NAMED_PATH) {
-		return _AR_ExpFromNamedPath(expr);
+		return _AR_ExpFromPath(expr);
 	} else if(t == CYPHER_AST_SHORTEST_PATH) {
 		return _AR_ExpFromShortestPath(expr);
 	} else if(t == CYPHER_AST_NODE_PATTERN || t == CYPHER_AST_REL_PATTERN) {
@@ -691,6 +707,8 @@ static AR_ExpNode *_AR_EXP_FromASTNode(const cypher_astnode_t *expr) {
 		return _AR_ExpFromMapExpression(expr);
 	} else if(t == CYPHER_AST_MAP_PROJECTION) {
 		return _AR_ExpFromMapProjection(expr);
+	} else if(t == CYPHER_AST_PATTERN_PATH) {
+		return _AR_ExpFromPatternPath(expr);
 	} else {
 		/*
 		   Unhandled types:

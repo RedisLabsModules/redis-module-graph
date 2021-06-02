@@ -107,7 +107,7 @@ static void _ExecutionPlan_ProcessQueryGraph(ExecutionPlan *plan, QueryGraph *qg
 	FilterTree_Free(ft);
 }
 
-static void _buildOptionalMatchOps(ExecutionPlan *plan, AST *ast, const cypher_astnode_t *clause) {
+void _buildOptionalMatchOps(ExecutionPlan *plan, const cypher_astnode_t *path) {
 	const char **arguments = NULL;
 	OpBase *optional = NewOptionalOp(plan);
 	rax *bound_vars = NULL;
@@ -125,7 +125,7 @@ static void _buildOptionalMatchOps(ExecutionPlan *plan, AST *ast, const cypher_a
 	}
 
 	// Build the new Match stream and add it to the Optional stream.
-	OpBase *match_stream = ExecutionPlan_BuildOpsFromPath(plan, arguments, clause);
+	OpBase *match_stream = ExecutionPlan_BuildOpsFromPath(plan, arguments, path);
 	array_free(arguments);
 	ExecutionPlan_AddOp(optional, match_stream);
 
@@ -145,7 +145,7 @@ static void _buildOptionalMatchOps(ExecutionPlan *plan, AST *ast, const cypher_a
 
 void buildMatchOpTree(ExecutionPlan *plan, AST *ast, const cypher_astnode_t *clause) {
 	if(cypher_ast_match_is_optional(clause)) {
-		_buildOptionalMatchOps(plan, ast, clause);
+		_buildOptionalMatchOps(plan, clause);
 		return;
 	}
 
@@ -179,7 +179,8 @@ void buildMatchOpTree(ExecutionPlan *plan, AST *ast, const cypher_astnode_t *cla
 
 	_ExecutionPlan_ProcessQueryGraph(plan, sub_qg, ast);
 
-	// Build the FilterTree to model any WHERE predicates on these clauses and place ops appropriately.
+	// Build the FilterTree to model any WHERE predicates on these clauses
+	// and place ops appropriately
 	FT_FilterNode *sub_ft = AST_BuildFilterTreeFromClauses(ast, mandatory_matches,
 														   mandatory_match_count);
 	ExecutionPlan_PlaceFilterOps(plan, plan->root, NULL, sub_ft);

@@ -5,7 +5,7 @@
  */
 
 #include "execution_plan.h"
-#include "../RG.h"
+#include "RG.h"
 #include "./ops/ops.h"
 #include "../errors.h"
 #include "../util/arr.h"
@@ -13,6 +13,7 @@
 #include "../util/rmalloc.h"
 #include "./optimizations/optimizer.h"
 #include "../ast/ast_build_filter_tree.h"
+#include "execution_plan_post_build.h"
 #include "execution_plan_build/execution_plan_construct.h"
 #include "execution_plan_build/execution_plan_modify.h"
 
@@ -20,7 +21,9 @@
 
 // Allocate a new ExecutionPlan segment.
 inline ExecutionPlan *ExecutionPlan_NewEmptyExecutionPlan(void) {
-	return rm_calloc(1, sizeof(ExecutionPlan));
+	ExecutionPlan *plan = rm_calloc(1, sizeof(ExecutionPlan));
+	QueryCtx_SetExecutionPlan(plan);
+	return plan;
 }
 
 void ExecutionPlan_PopulateExecutionPlan(ExecutionPlan *plan) {
@@ -297,6 +300,9 @@ ExecutionPlan *NewExecutionPlan(void) {
 	// or CALL clause
 	_implicit_result(plan);
 
+	// perform necessary transformations on constructed ExecutionPlan
+	ExecutionPlan_PostBuild(plan);
+
 	// clean up
 	array_free(segments);
 
@@ -306,6 +312,7 @@ ExecutionPlan *NewExecutionPlan(void) {
 void ExecutionPlan_PreparePlan(ExecutionPlan *plan) {
 	// Plan should be prepared only once.
 	ASSERT(!plan->prepared);
+
 	optimizePlan(plan);
 	QueryCtx_SetLastWriter(_ExecutionPlan_FindLastWriter(plan->root));
 	plan->prepared = true;
