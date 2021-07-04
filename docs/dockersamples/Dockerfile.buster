@@ -1,3 +1,4 @@
+<<<<<<< HEAD:docs/dockersamples/Dockerfile.buster
 # BUILD redisfab/redisgraph:${VERSION}-${ARCH}-${OSNICK}
 
 ARG REDIS_VER=6.2.4
@@ -15,17 +16,11 @@ ARG PACK=0
 ARG TEST=0
 
 #----------------------------------------------------------------------------------------------
-FROM redisfab/redis:${REDIS_VER}-${ARCH}-${OSNICK} AS redis
-# Build based on ${OS} (i.e., 'builder'), redis files are copies from 'redis'
-FROM ${OS} AS builder
+FROM redisfab/redis:6.2.3-x64-bionic AS redis
+# Build based on ubuntu:bionic (i.e., 'builder'), redis files are copies from 'redis'
+FROM ubuntu:bionic AS builder
 
-# Re-introducude arguments to this image
-ARG OSNICK
-ARG OS
-ARG ARCH
-ARG REDIS_VER
-
-RUN echo "Building for ${OSNICK} (${OS}) for ${ARCH} [with Redis ${REDIS_VER}]"
+RUN echo "Building for bionic (ubuntu:bionic) for x64 [with Redis 6.2.3]"
 
 WORKDIR /build
 
@@ -68,12 +63,8 @@ RUN set -ex ;\
     if [ "$PACK" = "1" ]; then bash -l -c "make package"; fi
 
 #----------------------------------------------------------------------------------------------
-FROM redisfab/redis:${REDIS_VER}-${ARCH}-${OSNICK}
+FROM redisfab/redis:6.2.3-x64-bionic
 
-ARG OSNICK
-ARG OS
-ARG ARCH
-ARG REDIS_VER
 ARG PACK
 
 ENV LIBDIR /usr/lib/redis/modules
