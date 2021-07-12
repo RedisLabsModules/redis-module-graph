@@ -14,12 +14,16 @@ JOBS ?= 1
 
 default: library
 
-# just build the dynamic library; do not run the demo
+# just build the dynamic library, not the demos
 library:
 	( cd build ; cmake $(CMAKE_OPTIONS) .. ; $(MAKE) --jobs=$(JOBS) )
 
-# just run the demos: assumes the library is already compiled
-run:
+# build the dynamic library and the demos
+all:
+	( cd build ; cmake $(CMAKE_OPTIONS) -DDEMO=1 .. ; $(MAKE) --jobs=$(JOBS) )
+
+# just run the demos
+run: all
 	( cd Demo ; ./demo )
 
 # just do 'make' in build; do not rerun the cmake script
@@ -30,7 +34,7 @@ remake:
 cmake:
 	( cd build ; cmake $(CMAKE_OPTIONS) .. ; )
 
-# build both the static and dynamic libraries do not run the demo
+# build both the static and dynamic libraries; do not run the demo
 static:
 	( cd build ; cmake $(CMAKE_OPTIONS) -DBUILD_GRB_STATIC_LIBRARY=1 .. ; $(MAKE) --jobs=$(JOBS) )
 
@@ -63,8 +67,7 @@ distclean:
 	rm -rf build/* Demo/*.out Demo/complex_demo_out*.m Tcov/log.txt
 	rm -rf Config/*.tmp Source/control.m4
 	rm -rf Doc/html/* Doc/*.tmp
-	( cd GraphBLAS/test/tcov ; $(MAKE) distclean )
-	( cd GraphBLAS/@GrB/private ; $(MAKE) distclean )
+	( cd GraphBLAS ; $(MAKE) distclean )
 	( cd Test ; $(MAKE) distclean )
 	( cd Tcov ; $(MAKE) distclean )
 	( cd Doc  ; $(MAKE) distclean )
